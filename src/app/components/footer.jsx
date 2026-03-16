@@ -41,11 +41,11 @@ export default function Footer({ setActivePage }) {
         <div>
           <h3 className="text-gray-900 dark:text-white font-bold text-xl sm:text-2xl mb-4 sm:mb-6">Connect</h3>
           <div className="flex items-center gap-6 sm:gap-8">
-            <a href="https://github.com" target="_blank" rel="noopener noreferrer" 
+            <a href="https://github.com/piyush-200" target="_blank" rel="noopener noreferrer" 
               className="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">
               <Github className="w-7 h-7 sm:w-8 sm:h-8" />
             </a>
-            <a href="https://linkedin.com" target="_blank" rel="noopener noreferrer"
+            <a href="https://www.linkedin.com/in/piyush-adhikari-ba869723a/" target="_blank" rel="noopener noreferrer"
               className="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">
               <Linkedin className="w-7 h-7 sm:w-8 sm:h-8" />
             </a>
