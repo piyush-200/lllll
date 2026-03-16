@@ -71,7 +71,7 @@ export default function Hero({ setActivePage }) {
           <div className="w-full h-full rounded-full bg-gradient-to-br from-slate-800 to-slate-900 p-1.5 flex items-center justify-center overflow-hidden border-2 border-cyan-400/30">
             {/* Profile Image */}
             <img 
-              src="https://media.licdn.com/dms/image/v2/D5635AQFBA8aUYdGuWw/profile-framedphoto-shrink_400_400/B56ZzI.FoqG4Ag-/0/1772898245468?e=1774209600&v=beta&t=wbT40VTi7Aeg6nIYfmiPLgFdfGvj7QsueglzPieqPpQ" 
+              src="https://media.licdn.com/dms/image/v2/D5603AQFYQXbJSfCPVQ/profile-displayphoto-scale_400_400/B56ZzI.CqRI0Ag-/0/1772898235841?e=1775088000&v=beta&t=h6UFMsZgnTQWgIYYRtDxYZlKyvMyn1mYuO1dZ927iDY" 
               alt="Profile"
               className="w-full h-full rounded-full object-cover"
             />
@@ -100,14 +100,13 @@ export default function Hero({ setActivePage }) {
 
       {/* Title */}
       <p className="text-xl md:text-2xl text-gray-300 mb-6 text-center z-10">
-        I'm a <span className="font-bold bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent">Machine Learning Engineer</span>
+        I'm a <span className="font-bold bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent">Full Stack Web Developer</span>
       </p>
 
       {/* Description */}
       <p className="text-gray-400 max-w-2xl text-center mb-10 leading-relaxed z-10">
-        Passionate DevOps and Machine Learning Engineer with expertise in CI/CD pipelines,
-        containerized ML model deployment, and advanced AI applications. Experienced in
-        building scalable systems and innovative solutions across multiple domains.
+        Passionate Web Developer with expertise in modern web technologies, responsive design, and full-stack development.
+        Experienced in building scalable web applications and innovative digital solutions across multiple domains
       </p>
 
       {/* Buttons */}
@@ -132,7 +131,7 @@ export default function Hero({ setActivePage }) {
       {/* Social Links */}
       <div className="flex gap-4 z-10 mb-20">
         <a
-          href="https://github.com"
+          href="https://github.com/piyush-200"
           target="_blank"
           rel="noopener noreferrer"
           className="w-12 h-12 flex items-center justify-center rounded-xl bg-slate-800/50 border-2 border-slate-700 text-gray-400 hover:text-cyan-400 hover:border-cyan-500 transition-all hover:scale-110 backdrop-blur-sm"
@@ -140,7 +139,7 @@ export default function Hero({ setActivePage }) {
           <Github className="w-6 h-6" />
         </a>
         <a
-          href="https://linkedin.com"
+          href="https://www.linkedin.com/in/piyush-adhikari-ba869723a/"
           target="_blank"
           rel="noopener noreferrer"
           className="w-12 h-12 flex items-center justify-center rounded-xl bg-slate-800/50 border-2 border-slate-700 text-gray-400 hover:text-purple-400 hover:border-purple-500 transition-all hover:scale-110 backdrop-blur-sm"
@@ -163,7 +162,7 @@ export default function Hero({ setActivePage }) {
               </svg>
             </div>
             <h4 className="text-xl font-bold text-center mb-2 text-white">Professional Roles</h4>
-            <p className="text-center text-gray-400 text-sm">From AI Engineer to DevOps Engineer, building scalable solutions</p>
+            <p className="text-center text-gray-400 text-sm">Web Development Engineer, building scalable solutions</p>
           </div>
 
           {/* Key Projects */}
@@ -174,7 +173,7 @@ export default function Hero({ setActivePage }) {
               </svg>
             </div>
             <h4 className="text-xl font-bold text-center mb-2 text-white">Key Projects</h4>
-            <p className="text-center text-gray-400 text-sm">Innovative AI and ML solutions with real-world impact</p>
+            <p className="text-center text-gray-400 text-sm">Innovative Web Development and AI solutions with real-world impact</p>
           </div>
 
           {/* Technical Skills */}
@@ -185,7 +184,7 @@ export default function Hero({ setActivePage }) {
               </svg>
             </div>
             <h4 className="text-xl font-bold text-center mb-2 text-white">Technical Skills</h4>
-            <p className="text-center text-gray-400 text-sm">Expertise in Python, AWS, Docker, ML frameworks, and more</p>
+            <p className="text-center text-gray-400 text-sm">Expertise in C++, Javascript, React, Node.js, and more</p>
           </div>
         </div>
       </div>
