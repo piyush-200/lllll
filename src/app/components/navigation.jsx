@@ -29,10 +29,10 @@ export default function Navigation({ mobileMenuOpen, setMobileMenuOpen, activePa
             <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white"
               style={{ background: 'var(--theme-gradient)' }}
             >
-              LK
+              PA
             </div>
             <span className="text-base font-semibold transition-colors text-cyan-400">
-              Lakshya Kumar
+              Piyush Adhikari
             </span>
           </button>
 
