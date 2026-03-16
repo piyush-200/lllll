@@ -50,20 +50,24 @@ export default function Resume() {
   const fetchResumePdf = async () => {
     try {
       // Check if resume PDF exists in storage
-      const { data, error } = await supabase.storage
-        .from('resumes')
-        .list('', {
-          limit: 1,
-          search: 'Lakshya_Kumar_Resume.pdf'
-        });
+// Check if any resume PDF exists in storage
+const { data, error } = await supabase.storage
+  .from('resumes')
+  .list('', {
+    limit: 1
+  });
 
-      if (!error && data && data.length > 0) {
-        const { data: urlData } = supabase.storage
-          .from('resumes')
-          .getPublicUrl('Lakshya_Kumar_Resume.pdf');
-        
-        setResumePdfUrl(urlData.publicUrl);
-      }
+if (!error && data && data.length > 0) {
+  const fileName = data[0].name;
+
+  const { data: urlData } = supabase.storage
+    .from('resumes')
+    .getPublicUrl(fileName);
+
+  setResumePdfUrl(urlData.publicUrl);
+  setResumeFileName(fileName);
+}
+      
     } catch (error) {
       console.error('Error fetching resume PDF:', error);
     }
@@ -100,7 +104,7 @@ export default function Resume() {
       // Upload to Supabase Storage
       const { data, error } = await supabase.storage
         .from('resumes')
-        .upload('Lakshya_Kumar_Resume.pdf', file, {
+        .upload(file.name, file, {
           cacheControl: '3600',
           upsert: true
         });
@@ -112,7 +116,7 @@ export default function Resume() {
       // Get public URL
       const { data: urlData } = supabase.storage
         .from('resumes')
-        .getPublicUrl('Lakshya_Kumar_Resume.pdf');
+        .getPublicUrl(file.name);
       
       setResumePdfUrl(urlData.publicUrl);
       toast.success('Resume PDF uploaded successfully!');
@@ -140,7 +144,7 @@ export default function Resume() {
       
       const { error } = await supabase.storage
         .from('resumes')
-        .remove(['Lakshya_Kumar_Resume.pdf']);
+        .remove([currentFileName]);
       
       if (error) {
         throw error;
