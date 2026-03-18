@@ -289,7 +289,7 @@ export default function Resume() {
             Resume
           </h1>
           <p className="text-gray-400 text-base max-w-2xl mx-auto mb-6">
-            A comprehensive overview of my professional experience, skills, and achievements in DevOps and Machine Learning.
+            A comprehensive overview of my professional experience, skills, and achievements in Web Development and AI.
           </p>
           
           {/* Action Buttons */}
@@ -386,27 +386,27 @@ export default function Resume() {
           {/* Resume Header Section */}
           <div className="bg-gradient-to-r from-slate-800/50 to-slate-900/50 p-8 md:p-10 border-b border-slate-700">
             <h2 className="text-3xl md:text-4xl font-black text-white mb-2">
-              Lakshya Kumar
+              Piyush Adhikari
             </h2>
             <p className="text-lg md:text-xl font-semibold mb-4" style={{ color: 'var(--theme-text-accent)' }}>
-              DevOps Engineer & Machine Learning Engineer
+              Full Stack Web Developer
             </p>
             <p className="text-gray-300 mb-6 max-w-4xl leading-relaxed">
-              Passionate DevOps and Machine Learning Engineer with expertise in CI/CD pipelines, containerized ML model deployment, and advanced AI applications. Experienced in building scalable systems and innovative solutions across multiple domains, from cloud infrastructure to AI-powered applications.
+              Passionate Web Developer with expertise in building modern, responsive web applications, implementing efficient front-end and back-end solutions, and optimizing user experiences. Skilled in developing scalable systems, integrating APIs, and creating dynamic, high-performance applications across diverse domains.
             </p>
             
             {/* Contact Information */}
             <div className="flex flex-wrap gap-4 md:gap-6 text-sm">
               <div className="flex items-center gap-2 text-gray-300">
                 <Mail className="w-4 h-4" style={{ color: 'var(--theme-text-accent)' }} />
-                <span>lakshakumar2911@gmail.com</span>
+                <span>piyushadhikari740@gmail.com</span>
               </div>
               <div className="flex items-center gap-2 text-gray-300">
                 <Phone className="w-4 h-4" style={{ color: 'var(--theme-text-accent)' }} />
-                <span>+919382857429</span>
+                <span>+919997384599</span>
               </div>
               <a 
-                href="https://github.com" 
+                href="https://github.com/piyush-200" 
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="flex items-center gap-2 text-gray-300 hover:text-cyan-400 transition-colors"
@@ -415,7 +415,7 @@ export default function Resume() {
                 <span>GitHub</span>
               </a>
               <a 
-                href="https://linkedin.com" 
+                href="https://www.linkedin.com/in/piyush-adhikari-ba869723a/" 
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="flex items-center gap-2 text-gray-300 hover:text-cyan-400 transition-colors"
