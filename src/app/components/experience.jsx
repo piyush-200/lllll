@@ -11,6 +11,12 @@ export default function Experience() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [uploadingCerts, setUploadingCerts] = useState(false);
+  const [experienceCertificates, setExperienceCertificates] = useState({});
+  
+  // Staging states for pending certificate changes
+  const [pendingCertUploads, setPendingCertUploads] = useState([]);
+  const [pendingCertDeletions, setPendingCertDeletions] = useState([]);
+  
   const [formData, setFormData] = useState({
     company: '',
     position: '',
@@ -18,13 +24,21 @@ export default function Experience() {
     end_date: '',
     is_current: false,
     description: '',
-    display_order: 0,
-    certificates: []
+    display_order: 0
   });
 
   useEffect(() => {
     fetchExperiences();
   }, []);
+
+  useEffect(() => {
+    // Fetch certificates for all experiences when they're loaded
+    if (experiences.length > 0) {
+      experiences.forEach(exp => {
+        fetchCertificatesForExperience(exp.id);
+      });
+    }
+  }, [experiences]);
 
   const fetchExperiences = async () => {
     try {
@@ -34,17 +48,6 @@ export default function Experience() {
         .order('display_order', { ascending: true });
 
       if (error) {
-        // Check if it's the certificates column error
-        if (error.message?.includes("Could not find the 'certificates' column")) {
-          toast.error(
-            <div className="space-y-2">
-              <p className="font-semibold">Database column missing!</p>
-              <p className="text-sm">The 'certificates' column needs to be added.</p>
-              <p className="text-xs">Run the SQL in /EXPERIENCE_TABLE_SETUP.sql</p>
-            </div>,
-            { duration: 10000 }
-          );
-        }
         throw error;
       }
       setExperiences(data || []);
@@ -55,9 +58,55 @@ export default function Experience() {
     }
   };
 
-  const handleCertificateUpload = async (e, experienceId = null) => {
+  const fetchCertificatesForExperience = async (experienceId) => {
+    try {
+      // List all files in the bucket with the experience ID prefix
+      const { data, error } = await supabase.storage
+        .from('experience-certificates')
+        .list('certificates', {
+          limit: 100,
+          sortBy: { column: 'created_at', order: 'desc' }
+        });
+
+      if (error) {
+        console.error('Error fetching certificates:', error);
+        return;
+      }
+
+      // Filter files that belong to this experience
+      const expCerts = data
+        .filter(file => file.name.startsWith(`exp-${experienceId}-`))
+        .map(file => {
+          const filePath = `certificates/${file.name}`;
+          const { data: urlData } = supabase.storage
+            .from('experience-certificates')
+            .getPublicUrl(filePath);
+          
+          return {
+            name: file.name,
+            url: urlData.publicUrl,
+            path: filePath,
+            created_at: file.created_at
+          };
+        });
+
+      setExperienceCertificates(prev => ({
+        ...prev,
+        [experienceId]: expCerts
+      }));
+    } catch (error) {
+      console.error('Error fetching certificates for experience:', error);
+    }
+  };
+
+  const handleCertificateUpload = async (e, experienceId) => {
     const files = Array.from(e.target.files);
     if (files.length === 0) return;
+
+    if (!editingId) {
+      toast.error('Please save the experience first before uploading certificates');
+      return;
+    }
 
     // Validate files are PDFs
     const invalidFiles = files.filter(file => file.type !== 'application/pdf');
@@ -66,134 +115,133 @@ export default function Experience() {
       return;
     }
 
-    setUploadingCerts(true);
-    const uploadedUrls = [];
+    // Validate file sizes (max 10MB each)
+    const oversizedFiles = files.filter(file => file.size > 10 * 1024 * 1024);
+    if (oversizedFiles.length > 0) {
+      toast.error('Each file must be less than 10MB');
+      return;
+    }
 
-    try {
-      for (const file of files) {
-        const fileExt = file.name.split('.').pop();
-        const fileName = `${experienceId || 'temp'}-${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+    // Stage files for upload instead of uploading immediately
+    const newPendingFiles = files.map(file => ({
+      file,
+      name: file.name,
+      size: file.size,
+      id: `pending-${Date.now()}-${Math.random().toString(36).substring(7)}`
+    }));
+
+    setPendingCertUploads(prev => [...prev, ...newPendingFiles]);
+    toast.success(`${files.length} certificate(s) staged for upload. Click "Update Experience" to save.`);
+    
+    // Reset file input
+    e.target.value = '';
+  };
+
+  const handleDeleteCertificate = async (experienceId, certPath, certName) => {
+    // Stage for deletion instead of deleting immediately
+    setPendingCertDeletions(prev => [...prev, { path: certPath, name: certName }]);
+    toast.success('Certificate marked for deletion. Click "Update Experience" to confirm.');
+  };
+
+  const handleRemovePendingUpload = (fileId) => {
+    setPendingCertUploads(prev => prev.filter(f => f.id !== fileId));
+    toast.success('Removed from upload queue');
+  };
+
+  const handleUndoDeleteCertificate = (certPath) => {
+    setPendingCertDeletions(prev => prev.filter(c => c.path !== certPath));
+    toast.success('Certificate deletion cancelled');
+  };
+
+  const processCertificateChanges = async (experienceId) => {
+    const results = { uploaded: 0, deleted: 0, errors: [] };
+
+    // Process deletions first
+    for (const cert of pendingCertDeletions) {
+      try {
+        const { error } = await supabase.storage
+          .from('experience-certificates')
+          .remove([cert.path]);
+
+        if (error) throw error;
+        results.deleted++;
+      } catch (error) {
+        console.error('Error deleting certificate:', error);
+        results.errors.push(`Failed to delete ${cert.name}`);
+      }
+    }
+
+    // Process uploads
+    for (const pendingFile of pendingCertUploads) {
+      try {
+        const fileExt = pendingFile.file.name.split('.').pop();
+        const fileName = `exp-${experienceId}-${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
         const filePath = `certificates/${fileName}`;
 
         // Upload to Supabase Storage
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from('experience-certificates')
-          .upload(filePath, file, {
+          .upload(filePath, pendingFile.file, {
             cacheControl: '3600',
             upsert: false
           });
 
-        if (uploadError) {
-          console.error('Upload error:', uploadError);
-          throw uploadError;
+        if (uploadError) throw uploadError;
+        results.uploaded++;
+      } catch (error) {
+        console.error('Error uploading certificate:', error);
+        
+        if (error.message?.includes('Bucket not found')) {
+          results.errors.push('Storage bucket not found! Create bucket in Supabase Storage.');
+        } else if (error.message?.includes('row-level security') || error.message?.includes('policy')) {
+          results.errors.push('Permission denied! Run SQL in /EXPERIENCE_TABLE_SETUP.sql');
+        } else {
+          results.errors.push(`Failed to upload ${pendingFile.name}`);
         }
-
-        // Get public URL
-        const { data: urlData } = supabase.storage
-          .from('experience-certificates')
-          .getPublicUrl(filePath);
-
-        uploadedUrls.push({
-          name: file.name,
-          url: urlData.publicUrl,
-          path: filePath
-        });
       }
-
-      // Always just update form data, don't save to database immediately
-      setFormData(prev => ({
-        ...prev,
-        certificates: [...prev.certificates, ...uploadedUrls]
-      }));
-      toast.success(`${uploadedUrls.length} certificate(s) added! Click "Update Experience" to save.`);
-      
-    } catch (error) {
-      console.error('Error uploading certificates:', error);
-      
-      if (error.message?.includes('Bucket not found')) {
-        toast.error(
-          <div className="space-y-2">
-            <p className="font-semibold">Storage bucket not found!</p>
-            <p className="text-sm">Please verify bucket 'experience-certificates' exists</p>
-          </div>,
-          { duration: 8000 }
-        );
-      } else if (error.message?.includes('row-level security') || error.statusCode === '42501') {
-        toast.error(
-          <div className="space-y-2">
-            <p className="font-semibold">Permission denied!</p>
-            <p className="text-sm">Storage policies need to be configured.</p>
-            <p className="text-xs">Run the SQL in /EXPERIENCE_TABLE_SETUP.sql</p>
-          </div>,
-          { duration: 8000 }
-        );
-      } else if (error.code === 'PGRST204') {
-        toast.error(
-          <div className="space-y-2">
-            <p className="font-semibold">Database column missing!</p>
-            <p className="text-sm">Run SQL: ALTER TABLE experience ADD COLUMN certificates JSONB DEFAULT '[]'</p>
-          </div>,
-          { duration: 8000 }
-        );
-      } else {
-        toast.error('Upload failed: ' + (error.message || 'Unknown error'));
-      }
-    } finally {
-      setUploadingCerts(false);
     }
-  };
 
-  const handleDeleteCertificate = async (experienceId, certIndex) => {
-    if (!confirm('⚠️ This will IMMEDIATELY delete the certificate. Continue?')) return;
-
-    try {
-      const experience = experiences.find(exp => exp.id === experienceId);
-      const certToDelete = experience.certificates[certIndex];
-      
-      // Delete from storage
-      if (certToDelete.path) {
-        const { error: storageError } = await supabase.storage
-          .from('experience-certificates')
-          .remove([certToDelete.path]);
-
-        if (storageError) console.error('Storage delete error:', storageError);
-      }
-
-      // Update database
-      const updatedCerts = experience.certificates.filter((_, idx) => idx !== certIndex);
-      const { error } = await supabase
-        .from('experience')
-        .update({ certificates: updatedCerts })
-        .eq('id', experienceId);
-
-      if (error) throw error;
-
-      toast.success('Certificate permanently deleted from database');
-      fetchExperiences();
-    } catch (error) {
-      console.error('Error deleting certificate:', error);
-      toast.error('Error deleting certificate');
-    }
-  };
-
-  const handleRemoveCertFromForm = (certIndex) => {
-    setFormData(prev => ({
-      ...prev,
-      certificates: prev.certificates.filter((_, idx) => idx !== certIndex)
-    }));
-    toast.info('Certificate removed from form. Click "Update Experience" to save changes.');
+    return results;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    setUploadingCerts(true);
     try {
+      // Save/update experience data first
       if (editingId) {
         const { error } = await supabase
           .from('experience')
           .update(formData)
           .eq('id', editingId);
         if (error) throw error;
-        toast.success('Experience updated successfully!');
+
+        // Process certificate changes only if editing an existing experience
+        if (pendingCertUploads.length > 0 || pendingCertDeletions.length > 0) {
+          const certResults = await processCertificateChanges(editingId);
+          
+          // Show results
+          if (certResults.errors.length > 0) {
+            toast.error(
+              <div className="space-y-1">
+                <p className="font-semibold">Some certificate operations failed:</p>
+                {certResults.errors.map((err, i) => (
+                  <p key={i} className="text-xs">{err}</p>
+                ))}
+              </div>,
+              { duration: 10000 }
+            );
+          }
+          
+          if (certResults.uploaded > 0 || certResults.deleted > 0) {
+            toast.success(
+              `Experience updated! ${certResults.uploaded} certificate(s) uploaded, ${certResults.deleted} deleted.`
+            );
+          }
+        } else {
+          toast.success('Experience updated successfully!');
+        }
       } else {
         const { error } = await supabase
           .from('experience')
@@ -201,11 +249,18 @@ export default function Experience() {
         if (error) throw error;
         toast.success('Experience added successfully!');
       }
+      
+      // Clear staging states
+      setPendingCertUploads([]);
+      setPendingCertDeletions([]);
+      
       fetchExperiences();
       resetForm();
     } catch (error) {
       toast.error('Error saving experience');
       console.error(error);
+    } finally {
+      setUploadingCerts(false);
     }
   };
 
@@ -233,8 +288,7 @@ export default function Experience() {
       end_date: exp.end_date || '',
       is_current: exp.is_current,
       description: exp.description,
-      display_order: exp.display_order,
-      certificates: exp.certificates || []
+      display_order: exp.display_order
     });
     setShowAddModal(true);
   };
@@ -247,11 +301,14 @@ export default function Experience() {
       end_date: '',
       is_current: false,
       description: '',
-      display_order: experiences.length,
-      certificates: []
+      display_order: experiences.length
     });
     setEditingId(null);
     setShowAddModal(false);
+    
+    // Clear staging states when closing modal
+    setPendingCertUploads([]);
+    setPendingCertDeletions([]);
   };
 
   if (loading) {
@@ -350,14 +407,14 @@ export default function Experience() {
                   </p>
 
                   {/* Certificates */}
-                  {exp.certificates && exp.certificates.length > 0 && (
+                  {experienceCertificates[exp.id] && experienceCertificates[exp.id].length > 0 && (
                     <div className="mt-4 pt-4 border-t border-slate-700/50">
                       <h5 className="text-sm font-semibold text-gray-300 mb-2 flex items-center gap-2">
                         <FileText className="w-4 h-4" style={{ color: 'var(--theme-text-accent)' }} />
-                        Certificates ({exp.certificates.length})
+                        Certificates ({experienceCertificates[exp.id].length})
                       </h5>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        {exp.certificates.map((cert, certIndex) => (
+                        {experienceCertificates[exp.id].map((cert, certIndex) => (
                           <div key={certIndex} className="relative group">
                             <a
                               href={cert.url}
@@ -374,7 +431,7 @@ export default function Experience() {
                                 onClick={(e) => {
                                   e.preventDefault();
                                   e.stopPropagation();
-                                  handleDeleteCertificate(exp.id, certIndex);
+                                  handleDeleteCertificate(exp.id, cert.path, cert.name);
                                 }}
                                 className="absolute top-1 right-1 p-1 text-red-400 hover:bg-red-500/20 rounded opacity-0 group-hover:opacity-100 transition-opacity z-10"
                                 title="Delete certificate immediately"
@@ -500,44 +557,111 @@ export default function Experience() {
                     />
                     <label
                       htmlFor="certificate-upload"
-                      className="px-6 py-3 rounded-lg text-white font-medium transition-all hover:scale-105 flex items-center gap-2"
+                      className="px-6 py-3 rounded-lg text-white font-medium transition-all hover:scale-105 flex items-center gap-2 cursor-pointer"
                       style={{ background: 'var(--theme-gradient)' }}
                     >
-                      <Upload className="w-5 h-5 inline mr-2" />
-                      Upload
+                      <Upload className="w-5 h-5" />
+                      Upload PDFs
                     </label>
-                    {uploadingCerts && (
-                      <span className="text-sm text-gray-400">Uploading...</span>
+                    {pendingCertUploads.length > 0 && (
+                      <span className="text-sm text-cyan-400">
+                        {pendingCertUploads.length} pending upload{pendingCertUploads.length > 1 ? 's' : ''}
+                      </span>
                     )}
                   </div>
-                  {formData.certificates && formData.certificates.length > 0 && (
-                    <div className="mt-4 space-y-2">
-                      <p className="text-xs text-gray-400">Click trash icon to remove certificates (changes saved on update)</p>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {formData.certificates.map((cert, certIndex) => (
-                          <div key={certIndex} className="relative group">
-                            <div className="bg-slate-700/50 border border-slate-600/30 rounded-lg p-3 pr-10 flex items-center gap-2 hover:border-slate-500/50 transition-all">
+
+                  {/* Show pending uploads */}
+                  {pendingCertUploads.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                      <p className="text-xs font-semibold text-cyan-400 flex items-center gap-1">
+                        <Upload className="w-3 h-3" />
+                        Pending Uploads (will upload when you click "Update Experience")
+                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        {pendingCertUploads.map((pendingFile) => (
+                          <div key={pendingFile.id} className="relative group">
+                            <div className="bg-cyan-500/10 border border-cyan-500/30 rounded-lg p-3 pr-10 flex items-center gap-2">
                               <FileText className="w-4 h-4 text-cyan-400 flex-shrink-0" />
-                              <a 
-                                href={cert.url} 
-                                target="_blank" 
-                                rel="noopener noreferrer" 
-                                className="text-sm text-gray-300 hover:text-white truncate flex-1"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                {cert.name}
-                              </a>
+                              <span className="text-sm text-cyan-300 truncate flex-1">
+                                {pendingFile.name}
+                              </span>
+                              <span className="text-xs text-cyan-500/70">NEW</span>
                               <button
                                 type="button"
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  handleRemoveCertFromForm(certIndex);
-                                }}
-                                className="absolute top-2 right-2 p-1.5 text-red-400 hover:text-red-300 hover:bg-red-500/20 rounded transition-all"
-                                title="Remove from form"
+                                onClick={() => handleRemovePendingUpload(pendingFile.id)}
+                                className="absolute top-2 right-2 p-1 text-cyan-400 hover:text-red-400 hover:bg-red-500/20 rounded transition-all"
+                                title="Remove from upload queue"
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Show existing certificates with deletion status */}
+                  {editingId && experienceCertificates[editingId] && experienceCertificates[editingId].length > 0 && (
+                    <div className="mt-4 space-y-2">
+                      <p className="text-xs text-gray-400">Existing Certificates</p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        {experienceCertificates[editingId]
+                          .filter(cert => !pendingCertDeletions.some(d => d.path === cert.path))
+                          .map((cert, certIndex) => (
+                            <div key={certIndex} className="relative group">
+                              <div className="bg-slate-700/50 border border-slate-600/30 rounded-lg p-3 pr-10 flex items-center gap-2 hover:border-slate-500/50 transition-all">
+                                <FileText className="w-4 h-4 text-cyan-400 flex-shrink-0" />
+                                <a 
+                                  href={cert.url} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer" 
+                                  className="text-sm text-gray-300 hover:text-white truncate flex-1"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {cert.name}
+                                </a>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    handleDeleteCertificate(editingId, cert.path, cert.name);
+                                  }}
+                                  className="absolute top-2 right-2 p-1.5 text-red-400 hover:text-red-300 hover:bg-red-500/20 rounded transition-all"
+                                  title="Mark for deletion"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Show certificates marked for deletion */}
+                  {pendingCertDeletions.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                      <p className="text-xs font-semibold text-red-400 flex items-center gap-1">
+                        <Trash2 className="w-3 h-3" />
+                        Marked for Deletion (will delete when you click "Update Experience")
+                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        {pendingCertDeletions.map((cert, idx) => (
+                          <div key={idx} className="relative group">
+                            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 pr-10 flex items-center gap-2 opacity-60">
+                              <FileText className="w-4 h-4 text-red-400 flex-shrink-0" />
+                              <span className="text-sm text-red-300 truncate flex-1 line-through">
+                                {cert.name}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleUndoDeleteCertificate(cert.path)}
+                                className="absolute top-2 right-2 p-1 text-green-400 hover:text-green-300 hover:bg-green-500/20 rounded transition-all"
+                                title="Undo deletion"
+                              >
+                                <X className="w-3 h-3" />
                               </button>
                             </div>
                           </div>
