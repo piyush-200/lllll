@@ -100,28 +100,13 @@ export default function Experience() {
         });
       }
 
-      if (experienceId) {
-        // If editing existing experience, update it immediately
-        const experience = experiences.find(exp => exp.id === experienceId);
-        const updatedCerts = [...(experience.certificates || []), ...uploadedUrls];
-        
-        const { error } = await supabase
-          .from('experience')
-          .update({ certificates: updatedCerts })
-          .eq('id', experienceId);
-
-        if (error) throw error;
-        
-        toast.success(`${uploadedUrls.length} certificate(s) uploaded successfully!`);
-        fetchExperiences();
-      } else {
-        // If adding new experience, just update form data
-        setFormData(prev => ({
-          ...prev,
-          certificates: [...prev.certificates, ...uploadedUrls]
-        }));
-        toast.success(`${uploadedUrls.length} certificate(s) added!`);
-      }
+      // Always just update form data, don't save to database immediately
+      setFormData(prev => ({
+        ...prev,
+        certificates: [...prev.certificates, ...uploadedUrls]
+      }));
+      toast.success(`${uploadedUrls.length} certificate(s) added! Click "Update Experience" to save.`);
+      
     } catch (error) {
       console.error('Error uploading certificates:', error);
       
@@ -159,7 +144,7 @@ export default function Experience() {
   };
 
   const handleDeleteCertificate = async (experienceId, certIndex) => {
-    if (!confirm('Delete this certificate?')) return;
+    if (!confirm('⚠️ This will IMMEDIATELY delete the certificate. Continue?')) return;
 
     try {
       const experience = experiences.find(exp => exp.id === experienceId);
@@ -183,7 +168,7 @@ export default function Experience() {
 
       if (error) throw error;
 
-      toast.success('Certificate deleted');
+      toast.success('Certificate permanently deleted from database');
       fetchExperiences();
     } catch (error) {
       console.error('Error deleting certificate:', error);
@@ -196,6 +181,7 @@ export default function Experience() {
       ...prev,
       certificates: prev.certificates.filter((_, idx) => idx !== certIndex)
     }));
+    toast.info('Certificate removed from form. Click "Update Experience" to save changes.');
   };
 
   const handleSubmit = async (e) => {
@@ -370,7 +356,7 @@ export default function Experience() {
                         <FileText className="w-4 h-4" style={{ color: 'var(--theme-text-accent)' }} />
                         Certificates ({exp.certificates.length})
                       </h5>
-                      <div className="grid grid-cols-1 gap-2">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                         {exp.certificates.map((cert, certIndex) => (
                           <div key={certIndex} className="relative group">
                             <a
@@ -387,10 +373,11 @@ export default function Experience() {
                               <button
                                 onClick={(e) => {
                                   e.preventDefault();
+                                  e.stopPropagation();
                                   handleDeleteCertificate(exp.id, certIndex);
                                 }}
-                                className="absolute top-1 right-1 p-1 text-red-400 hover:bg-red-500/20 rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                                title="Delete certificate"
+                                className="absolute top-1 right-1 p-1 text-red-400 hover:bg-red-500/20 rounded opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                                title="Delete certificate immediately"
                               >
                                 <X className="w-3 h-3" />
                               </button>
@@ -398,28 +385,6 @@ export default function Experience() {
                           </div>
                         ))}
                       </div>
-                    </div>
-                  )}
-
-                  {/* Upload Certificate Button (Admin Mode) */}
-                  {adminMode && (
-                    <div className="mt-4 pt-4 border-t border-slate-700/50">
-                      <input
-                        type="file"
-                        accept="application/pdf,.pdf"
-                        multiple
-                        onChange={(e) => handleCertificateUpload(e, exp.id)}
-                        className="hidden"
-                        id={`cert-upload-${exp.id}`}
-                        capture="environment"
-                      />
-                      <label
-                        htmlFor={`cert-upload-${exp.id}`}
-                        className="inline-flex items-center gap-2 px-4 py-2 bg-slate-700/50 hover:bg-slate-700 border border-slate-600/50 hover:border-cyan-500/50 rounded-lg text-sm text-gray-300 hover:text-white cursor-pointer transition-all"
-                      >
-                        <Upload className="w-4 h-4" />
-                        Upload Certificate
-                      </label>
                     </div>
                   )}
                 </div>
@@ -546,25 +511,38 @@ export default function Experience() {
                     )}
                   </div>
                   {formData.certificates && formData.certificates.length > 0 && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-                      {formData.certificates.map((cert, certIndex) => (
-                        <div key={certIndex} className="relative">
-                          <div className="bg-slate-700/50 border border-slate-600/30 rounded-lg p-2 flex items-center gap-2">
-                            <FileText className="w-4 h-4" />
-                            <a href={cert.url} target="_blank" rel="noopener noreferrer" className="text-sm text-gray-300 hover:text-white">
-                              {cert.name}
-                            </a>
-                            {adminMode && (
+                    <div className="mt-4 space-y-2">
+                      <p className="text-xs text-gray-400">Click trash icon to remove certificates (changes saved on update)</p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {formData.certificates.map((cert, certIndex) => (
+                          <div key={certIndex} className="relative group">
+                            <div className="bg-slate-700/50 border border-slate-600/30 rounded-lg p-3 pr-10 flex items-center gap-2 hover:border-slate-500/50 transition-all">
+                              <FileText className="w-4 h-4 text-cyan-400 flex-shrink-0" />
+                              <a 
+                                href={cert.url} 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="text-sm text-gray-300 hover:text-white truncate flex-1"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {cert.name}
+                              </a>
                               <button
-                                onClick={() => handleRemoveCertFromForm(certIndex)}
-                                className="absolute top-1 right-1 p-1 text-red-400 hover:bg-red-500/10 rounded"
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  handleRemoveCertFromForm(certIndex);
+                                }}
+                                className="absolute top-2 right-2 p-1.5 text-red-400 hover:text-red-300 hover:bg-red-500/20 rounded transition-all"
+                                title="Remove from form"
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
-                            )}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
