@@ -13,16 +13,26 @@ export default function Resume() {
   const [projects, setProjects] = useState([]);
   const [skills, setSkills] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [resumePdfUrl, setResumePdfUrl] = useState(null);
+  const [resumePdfs, setResumePdfs] = useState([]);
   const [uploadingPdf, setUploadingPdf] = useState(false);
+  const [experienceCertificates, setExperienceCertificates] = useState({});
   const resumeRef = useRef(null);
   const fileInputRef = useRef(null);
   const { adminMode } = useAdmin();
 
   useEffect(() => {
     fetchData();
-    fetchResumePdf();
+    fetchResumePdfs();
   }, []);
+
+  useEffect(() => {
+    // Fetch certificates for all experiences when they're loaded
+    if (experiences.length > 0) {
+      experiences.forEach(exp => {
+        fetchCertificatesForExperience(exp.id);
+      });
+    }
+  }, [experiences]);
 
   const fetchData = async () => {
     try {
@@ -47,75 +57,141 @@ export default function Resume() {
     }
   };
 
-  const fetchResumePdf = async () => {
+  const fetchResumePdfs = async () => {
     try {
-      // Check if resume PDF exists in storage
+      // List all PDFs in the resumes bucket
       const { data, error } = await supabase.storage
         .from('resumes')
         .list('', {
-          limit: 1,
-          search: 'Lakshya_Kumar_Resume.pdf'
+          limit: 100,
+          sortBy: { column: 'created_at', order: 'desc' }
         });
 
       if (!error && data && data.length > 0) {
-        const { data: urlData } = supabase.storage
-          .from('resumes')
-          .getPublicUrl('Lakshya_Kumar_Resume.pdf');
+        const pdfList = data.map(file => {
+          const { data: urlData } = supabase.storage
+            .from('resumes')
+            .getPublicUrl(file.name);
+          
+          return {
+            name: file.name,
+            url: urlData.publicUrl,
+            path: file.name,
+            created_at: file.created_at
+          };
+        });
         
-        setResumePdfUrl(urlData.publicUrl);
+        setResumePdfs(pdfList);
       }
     } catch (error) {
-      console.error('Error fetching resume PDF:', error);
+      console.error('Error fetching resume PDFs:', error);
     }
   };
 
-  const handleDownloadPDF = () => {
-    if (resumePdfUrl) {
-      // Download the uploaded PDF
-      window.open(resumePdfUrl, '_blank');
+  const fetchCertificatesForExperience = async (experienceId) => {
+    try {
+      // List all files in the bucket with the experience ID prefix
+      const { data, error } = await supabase.storage
+        .from('experience-certificates')
+        .list('certificates', {
+          limit: 100,
+          sortBy: { column: 'created_at', order: 'desc' }
+        });
+
+      if (error) {
+        console.error('Error fetching certificates:', error);
+        return;
+      }
+
+      // Filter files that belong to this experience
+      const expCerts = data
+        .filter(file => file.name.startsWith(`exp-${experienceId}-`))
+        .map(file => {
+          const filePath = `certificates/${file.name}`;
+          const { data: urlData } = supabase.storage
+            .from('experience-certificates')
+            .getPublicUrl(filePath);
+          
+          return {
+            name: file.name,
+            url: urlData.publicUrl,
+            path: filePath,
+            created_at: file.created_at
+          };
+        });
+
+      setExperienceCertificates(prev => ({
+        ...prev,
+        [experienceId]: expCerts
+      }));
+    } catch (error) {
+      console.error('Error fetching certificates for experience:', error);
+    }
+  };
+
+  const handleDownloadPDF = (pdfUrl) => {
+    if (pdfUrl) {
+      window.open(pdfUrl, '_blank');
+    } else if (resumePdfs.length > 0) {
+      // If no specific URL, download the first one
+      window.open(resumePdfs[0].url, '_blank');
     } else {
       toast.error('No resume PDF available. Please upload one in admin mode.');
     }
   };
 
   const handleUploadPDF = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(event.target.files);
+    if (files.length === 0) return;
 
-    // Validate file type
-    if (file.type !== 'application/pdf') {
-      toast.error('Please upload a PDF file');
+    // Validate files are PDFs
+    const invalidFiles = files.filter(file => file.type !== 'application/pdf');
+    if (invalidFiles.length > 0) {
+      toast.error('Only PDF files are allowed');
       return;
     }
 
-    // Validate file size (max 10MB)
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error('File size must be less than 10MB');
+    // Validate file sizes (max 10MB each)
+    const oversizedFiles = files.filter(file => file.size > 10 * 1024 * 1024);
+    if (oversizedFiles.length > 0) {
+      toast.error('Each file must be less than 10MB');
       return;
     }
     
     try {
       setUploadingPdf(true);
+      const uploadedPdfs = [];
       
-      // Upload to Supabase Storage
-      const { data, error } = await supabase.storage
-        .from('resumes')
-        .upload('Lakshya_Kumar_Resume.pdf', file, {
-          cacheControl: '3600',
-          upsert: true
+      for (const file of files) {
+        const fileExt = file.name.split('.').pop();
+        const fileName = `resume-${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+        
+        // Upload to Supabase Storage
+        const { data, error } = await supabase.storage
+          .from('resumes')
+          .upload(fileName, file, {
+            cacheControl: '3600',
+            upsert: false
+          });
+        
+        if (error) {
+          throw error;
+        }
+        
+        // Get public URL
+        const { data: urlData } = supabase.storage
+          .from('resumes')
+          .getPublicUrl(fileName);
+        
+        uploadedPdfs.push({
+          name: file.name,
+          url: urlData.publicUrl,
+          path: fileName
         });
-      
-      if (error) {
-        throw error;
       }
       
-      // Get public URL
-      const { data: urlData } = supabase.storage
-        .from('resumes')
-        .getPublicUrl('Lakshya_Kumar_Resume.pdf');
-      
-      setResumePdfUrl(urlData.publicUrl);
-      toast.success('Resume PDF uploaded successfully!');
+      setResumePdfs(prev => [...uploadedPdfs, ...prev]);
+      toast.success(`${uploadedPdfs.length} resume PDF(s) uploaded successfully!`);
       
       // Reset file input
       if (fileInputRef.current) {
@@ -152,8 +228,8 @@ export default function Resume() {
     }
   };
 
-  const handleDeletePDF = async () => {
-    if (!confirm('Are you sure you want to delete the resume PDF?')) {
+  const handleDeletePDF = async (pdfPath, pdfName) => {
+    if (!confirm(`Are you sure you want to delete "${pdfName}"?`)) {
       return;
     }
 
@@ -162,13 +238,13 @@ export default function Resume() {
       
       const { error } = await supabase.storage
         .from('resumes')
-        .remove(['Lakshya_Kumar_Resume.pdf']);
+        .remove([pdfPath]);
       
       if (error) {
         throw error;
       }
       
-      setResumePdfUrl(null);
+      setResumePdfs(prev => prev.filter(pdf => pdf.path !== pdfPath));
       toast.success('Resume PDF deleted successfully!');
       
     } catch (error) {
@@ -219,54 +295,82 @@ export default function Resume() {
           {/* Action Buttons */}
           <div className="flex flex-wrap gap-4 justify-center">
             <button
-              onClick={handleDownloadPDF}
-              className="px-6 py-3 rounded-xl font-semibold text-white shadow-lg hover:scale-105 transition-all flex items-center gap-3"
+              onClick={() => handleDownloadPDF()}
+              disabled={resumePdfs.length === 0}
+              className="px-6 py-3 rounded-xl font-semibold text-white shadow-lg hover:scale-105 transition-all flex items-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
               style={{ background: 'var(--theme-gradient)' }}
             >
               <Download className="w-5 h-5" />
-              Download PDF
+              Download Latest PDF
             </button>
             
             {adminMode && (
-              <>
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploadingPdf}
-                  className="px-6 py-3 rounded-xl font-semibold text-white shadow-lg hover:scale-105 transition-all flex items-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-                  style={{ background: 'var(--theme-gradient)' }}
-                >
-                  <Upload className="w-5 h-5" />
-                  {uploadingPdf ? 'Uploading...' : 'Upload PDF'}
-                </button>
-                
-                {resumePdfUrl && (
-                  <button
-                    onClick={handleDeletePDF}
-                    disabled={uploadingPdf}
-                    className="px-6 py-3 rounded-xl font-semibold bg-red-600 hover:bg-red-700 text-white shadow-lg hover:scale-105 transition-all flex items-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-                  >
-                    <Trash2 className="w-5 h-5" />
-                    Delete PDF
-                  </button>
-                )}
-              </>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadingPdf}
+                className="px-6 py-3 rounded-xl font-semibold text-white shadow-lg hover:scale-105 transition-all flex items-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                style={{ background: 'var(--theme-gradient)' }}
+              >
+                <Upload className="w-5 h-5" />
+                {uploadingPdf ? 'Uploading...' : 'Upload PDF'}
+              </button>
             )}
           </div>
 
+          {/* Uploaded PDFs List (Admin Only) */}
+          {adminMode && resumePdfs.length > 0 && (
+            <div className="mt-6 max-w-2xl mx-auto">
+              <h3 className="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2">
+                <FileText className="w-4 h-4 text-cyan-400" />
+                Uploaded Resume PDFs ({resumePdfs.length})
+              </h3>
+              <div className="space-y-2">
+                {resumePdfs.map((pdf, index) => (
+                  <div
+                    key={pdf.path}
+                    className="flex items-center justify-between gap-3 p-3 bg-slate-800/60 border border-slate-700 rounded-lg hover:border-cyan-500/30 transition-all"
+                  >
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <FileText className="w-5 h-5 text-cyan-400 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-white truncate">
+                          {pdf.name}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {pdf.created_at ? new Date(pdf.created_at).toLocaleDateString() : 'Uploaded'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <button
+                        onClick={() => handleDownloadPDF(pdf.url)}
+                        className="p-2 text-gray-400 hover:text-cyan-400 transition-colors"
+                        title="Download PDF"
+                      >
+                        <Download className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeletePDF(pdf.path, pdf.name)}
+                        disabled={uploadingPdf}
+                        className="p-2 text-gray-400 hover:text-red-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Delete PDF"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* PDF Status Indicator */}
-          {adminMode && (
+          {adminMode && resumePdfs.length === 0 && (
             <div className="mt-4">
-              {resumePdfUrl ? (
-                <p className="text-sm text-green-400 flex items-center justify-center gap-2">
-                  <FileText className="w-4 h-4" />
-                  Resume PDF is uploaded and ready for download
-                </p>
-              ) : (
-                <p className="text-sm text-yellow-400 flex items-center justify-center gap-2">
-                  <FileText className="w-4 h-4" />
-                  No resume PDF uploaded yet
-                </p>
-              )}
+              <p className="text-sm text-yellow-400 flex items-center justify-center gap-2">
+                <FileText className="w-4 h-4" />
+                No resume PDF uploaded yet
+              </p>
             </div>
           )}
         </motion.div>
@@ -350,16 +454,16 @@ export default function Resume() {
                     </p>
 
                     {/* Certificates Section */}
-                    {exp.certificates && exp.certificates.length > 0 && (
+                    {experienceCertificates[exp.id] && experienceCertificates[exp.id].length > 0 && (
                       <div className="mt-3 pt-3 border-t border-slate-700/50">
                         <div className="flex items-center gap-2 mb-2">
                           <FileText className="w-4 h-4 text-cyan-400" />
                           <h5 className="text-sm font-semibold text-gray-300">
-                            Certificates ({exp.certificates.length})
+                            Certificates ({experienceCertificates[exp.id].length})
                           </h5>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                          {exp.certificates.map((cert, certIndex) => (
+                          {experienceCertificates[exp.id].map((cert, certIndex) => (
                             <a
                               key={certIndex}
                               href={cert.url}
@@ -564,6 +668,7 @@ export default function Resume() {
         ref={fileInputRef}
         accept="application/pdf"
         className="hidden"
+        multiple
         onChange={handleUploadPDF}
       />
     </div>
